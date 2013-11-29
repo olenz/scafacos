@@ -17,22 +17,22 @@ srcdir_sl_source=$(srcdir)/../sl
 srcdir_sl_extra=$(srcdir)/../sl/extra
 
 libsl_back__p_a_CPPFLAGS = \
-  -DSL_PREFIX=back__p_ -DSL_USE_MPI -I$(srcdir_sl_source)/include -I$(srcdir_sl)/sl_back__p -DSL_EXTRA -DSL_EXTRA_PREFIX=fcs_gridsort_ -I$(srcdir_sl_extra)/include
+  -DSL_PREFIX=fcs_back__p_ -DSL_USE_MPI -I$(srcdir_sl_source)/include -I$(srcdir_sl)/sl_back__p -DSL_EXTRA -DSL_EXTRA_PREFIX=fcs_gridsort_ -I$(srcdir_sl_extra)/include
 
 libsl_back_f__a_CPPFLAGS = \
-  -DSL_PREFIX=back_f__ -DSL_USE_MPI -I$(srcdir_sl_source)/include -I$(srcdir_sl)/sl_back_f_ -DSL_EXTRA -DSL_EXTRA_PREFIX=fcs_gridsort_ -I$(srcdir_sl_extra)/include
+  -DSL_PREFIX=fcs_back_f__ -DSL_USE_MPI -I$(srcdir_sl_source)/include -I$(srcdir_sl)/sl_back_f_ -DSL_EXTRA -DSL_EXTRA_PREFIX=fcs_gridsort_ -I$(srcdir_sl_extra)/include
 
 libsl_back_fp_a_CPPFLAGS = \
-  -DSL_PREFIX=back_fp_ -DSL_USE_MPI -I$(srcdir_sl_source)/include -I$(srcdir_sl)/sl_back_fp -DSL_EXTRA -DSL_EXTRA_PREFIX=fcs_gridsort_ -I$(srcdir_sl_extra)/include
+  -DSL_PREFIX=fcs_back_fp_ -DSL_USE_MPI -I$(srcdir_sl_source)/include -I$(srcdir_sl)/sl_back_fp -DSL_EXTRA -DSL_EXTRA_PREFIX=fcs_gridsort_ -I$(srcdir_sl_extra)/include
 
 libsl_back_x_a_CPPFLAGS = \
-  -DSL_PREFIX=back_x_ -DSL_USE_MPI -I$(srcdir_sl_source)/include -I$(srcdir_sl)/sl_back_x -DSL_EXTRA -DSL_EXTRA_PREFIX=fcs_gridsort_ -I$(srcdir_sl_extra)/include
+  -DSL_PREFIX=fcs_back_x_ -DSL_USE_MPI -I$(srcdir_sl_source)/include -I$(srcdir_sl)/sl_back_x -DSL_EXTRA -DSL_EXTRA_PREFIX=fcs_gridsort_ -I$(srcdir_sl_extra)/include
 
 libsl_forw_a_CPPFLAGS = \
-  -DSL_PREFIX=forw_ -DSL_USE_MPI -I$(srcdir_sl_source)/include -I$(srcdir_sl)/sl_forw -DSL_EXTRA -DSL_EXTRA_PREFIX=fcs_gridsort_ -I$(srcdir_sl_extra)/include
+  -DSL_PREFIX=fcs_forw_ -DSL_USE_MPI -I$(srcdir_sl_source)/include -I$(srcdir_sl)/sl_forw -DSL_EXTRA -DSL_EXTRA_PREFIX=fcs_gridsort_ -I$(srcdir_sl_extra)/include
 
 libsl_extra_a_CPPFLAGS = \
-  -DSL_EXTRA_PREFIX=fcs_gridsort_ -DZMPI_PREFIX=fcs_gridsort_ -DHAVE_Z_PACK_H -I$(srcdir_sl_extra)/z_pack -DHAVE_ZMPI_LOCAL_H -I$(srcdir_sl_extra)/zmpi_local -DHAVE_ZMPI_TOOLS_H -I$(srcdir_sl_extra)/zmpi_tools
+  -DZ_PREFIX=fcs_gridsort_ -DZMPI_PREFIX=fcs_gridsort_ -DHAVE_Z_PACK_H -I$(srcdir_sl_extra)/z_pack -DHAVE_ZMPI_LOCAL_H -I$(srcdir_sl_extra)/zmpi_local -DHAVE_ZMPI_TOOLS_H -I$(srcdir_sl_extra)/zmpi_tools
 
 libsl_mpiwrap_a_CPPFLAGS = \
   -DSL_USE_MPI -I$(srcdir_sl)/include -I$(top_srcdir)/lib -DZMPI_PREFIX=fcs_gridsort_ -DHAVE_ZMPI_LOCAL_H -DHAVE_ZMPI_TOOLS_H -DHAVE_ZMPI_ATAIP_H -DHAVE_ZMPI_ATASP_H -I$(srcdir_sl_extra)/include
@@ -51,7 +51,9 @@ sl_SOURCE = \
   $(srcdir_sl_source)/base_mpi/spec.c \
   $(srcdir_sl_source)/base/z_crc32.c \
   $(srcdir_sl_source)/base/z_pack.c \
+  $(srcdir_sl_source)/include/dash_aux_heap.h \
   $(srcdir_sl_source)/include/dash_aux_static.h \
+  $(srcdir_sl_source)/include/dash_common.h \
   $(srcdir_sl_source)/include/dash_conf.h \
   $(srcdir_sl_source)/include/dash_core.h \
   $(srcdir_sl_source)/include/dash_exec.h \
@@ -59,6 +61,14 @@ sl_SOURCE = \
   $(srcdir_sl_source)/include/dash_rename.h \
   $(srcdir_sl_source)/include/dash_sched_a2av_aux.h \
   $(srcdir_sl_source)/include/dash_sched_a2av.h \
+  $(srcdir_sl_source)/include/dash_sched_a2av_sym.h \
+  $(srcdir_sl_source)/include/dash_sched.h \
+  $(srcdir_sl_source)/include/local_generic_heap_conf.h \
+  $(srcdir_sl_source)/include/local_generic_heap.h \
+  $(srcdir_sl_source)/include/local_generic_heap_rename.h \
+  $(srcdir_sl_source)/include/prx_conf.h \
+  $(srcdir_sl_source)/include/prx.h \
+  $(srcdir_sl_source)/include/prx_rename.h \
   $(srcdir_sl_source)/include/sl_adds.h \
   $(srcdir_sl_source)/include/sl_adds_intern.h \
   $(srcdir_sl_source)/include/sl_common.h \
@@ -190,16 +200,23 @@ libsl_extra_a_SOURCES = \
   $(srcdir_sl_extra)/zmpi_ataip/dash_aux_heap.h \
   $(srcdir_sl_extra)/zmpi_ataip/dash_aux_static.h \
   $(srcdir_sl_extra)/zmpi_ataip/dash.c \
+  $(srcdir_sl_extra)/zmpi_ataip/dash_common.h \
   $(srcdir_sl_extra)/zmpi_ataip/dash_conf.h \
   $(srcdir_sl_extra)/zmpi_ataip/dash_core.h \
   $(srcdir_sl_extra)/zmpi_ataip/dash_exec.h \
   $(srcdir_sl_extra)/zmpi_ataip/dash_exec_mpi.h \
   $(srcdir_sl_extra)/zmpi_ataip/dash_rename.h \
+  $(srcdir_sl_extra)/zmpi_ataip/dash_sched_a2a_sym.h \
   $(srcdir_sl_extra)/zmpi_ataip/dash_sched_a2av_aux.h \
   $(srcdir_sl_extra)/zmpi_ataip/dash_sched_a2av.h \
+  $(srcdir_sl_extra)/zmpi_ataip/dash_sched_a2av_sym.h \
+  $(srcdir_sl_extra)/zmpi_ataip/dash_sched.h \
   $(srcdir_sl_extra)/zmpi_ataip/local_generic_heap_conf.h \
   $(srcdir_sl_extra)/zmpi_ataip/local_generic_heap.h \
   $(srcdir_sl_extra)/zmpi_ataip/local_generic_heap_rename.h \
+  $(srcdir_sl_extra)/zmpi_ataip/prx_conf.h \
+  $(srcdir_sl_extra)/zmpi_ataip/prx.h \
+  $(srcdir_sl_extra)/zmpi_ataip/prx_rename.h \
   $(srcdir_sl_extra)/zmpi_ataip/zmpi_ataip.c \
   $(srcdir_sl_extra)/zmpi_ataip/zmpi_ataip.h \
   $(srcdir_sl_extra)/zmpi_ataip/zmpi_ataip_rename.h \

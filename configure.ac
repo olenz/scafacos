@@ -32,14 +32,14 @@ AC_CONFIG_MACRO_DIR([m4])
 # Additional helper scripts are stored here.
 AC_CONFIG_AUX_DIR([build-aux])
 
-# Initialize Automake; require 1.9.6 or newer, do not enforce GNU rules.
-AM_INIT_AUTOMAKE([1.9.6 -Wall -Wno-override foreign])
+# Initialize Automake; require 1.9.6 or newer, do not enforce GNU rules, create pax/posix tarfiles in make dist to support longer filenames in doxgen stuff.
+AM_INIT_AUTOMAKE([1.9.6 -Wall -Wno-override foreign tar-pax])
 
 # Print an error if a (custom) AX_ or ACX_ macro appears in the ouput
 m4_pattern_forbid([^A[C]?X_])
 
 # List of all solvers.
-m4_define([all_solver_methods], [direct ewald fmm memd mmm1d mmm2d p2nfft p3m pepc pp3mg vmg])
+m4_define([all_solver_methods], [direct ewald fmm memd mmm1d mmm2d p2nfft p3m pepc pp3mg vmg wolf])
 
 # List of solvers that have their own configure
 m4_define([subconfigure_solver_methods], [fmm p2nfft pepc pp3mg vmg])
@@ -239,7 +239,7 @@ requires_fftw3="p2nfft p3m"
 requires_fftw3_mpi="p2nfft"
 requires_pfft="p2nfft"
 requires_pnfft="p2nfft"
-requires_near="direct ewald p2nfft p3m"
+requires_near="direct ewald p2nfft p3m wolf"
 requires_gridsort="ewald memd mmm1d mmm2d p2nfft p3m near"
 requires_resort="gridsort"
 
@@ -388,6 +388,11 @@ if test "x$use_fcs_pfft" = xyes ; then
       *--disable-header-install*) ;;
       *) ac_configure_args="$ac_configure_args --disable-header-install" ;;
     esac
+    # Disable compilation of documentation.
+    case $ac_configure_args in
+      *--disable-doc*) ;;
+      *) ac_configure_args="$ac_configure_args --disable-doc" ;;
+    esac
     # Disable tests if extended tests are not requested.
     if test "x$enable_fcs_extended_tests" != xyes ; then
       case $ac_configure_args in
@@ -479,6 +484,11 @@ if test "x$use_fcs_pnfft" = xyes ; then
     case $ac_configure_args in
       *--disable-header-install*) ;;
       *) ac_configure_args="$ac_configure_args --disable-header-install" ;;
+    esac
+    # Disable compilation of documentation.
+    case $ac_configure_args in
+      *--disable-doc*) ;;
+      *) ac_configure_args="$ac_configure_args --disable-doc" ;;
     esac
     # Disable tests if extended tests are not requested.
     if test "x$enable_fcs_extended_tests" != xyes ; then
@@ -577,6 +587,8 @@ AX_FCS_FMM_TOP([test "x$use_fcs_fmm" = xyes])
 # pp3mg prerequisites
 
 # vmg prerequisites
+
+# wolf prerequisites
 
 enabled_solvers=
 
@@ -683,6 +695,11 @@ if test "x$use_fcs_ewald" = xyes ; then
   AX_FCS_PACKAGE_ADD([ewald_LIBS],[-lfcs_ewald])
   AX_FCS_PACKAGE_ADD([ewald_LIBS_A],[lib/ewald/libfcs_ewald.a])
 fi
+if test "x$use_fcs_wolf" = xyes ; then
+  AC_CONFIG_FILES([lib/wolf/Makefile])
+  AX_FCS_PACKAGE_ADD([wolf_LIBS],[-lfcs_wolf])
+  AX_FCS_PACKAGE_ADD([wolf_LIBS_A],[lib/wolf/libfcs_wolf.a])
+fi
 
 # Create FCS library files.
 AC_CONFIG_FILES([Makefile
@@ -710,9 +727,7 @@ AC_CONFIG_FILES([
 
 AC_CONFIG_LINKS([test/generic/scafacos_test_all.sh:test/generic/scafacos_test_all.sh])
 AC_CONFIG_LINKS([test/generic/compute_nonperiodic_references.sh:test/generic/compute_nonperiodic_references.sh])
-AC_CONFIG_LINKS([test/generic/tune_alpha_2dp.py:test/generic/tune_alpha_2dp.py])
-AC_CONFIG_LINKS([test/generic/tune_alpha_3dp.py:test/generic/tune_alpha_3dp.py])
-AC_CONFIG_LINKS([test/generic/tune_alpha_cloud_wall_3dp.py:test/generic/tune_alpha_cloud_wall_3dp.py])
+AC_CONFIG_LINKS([test/generic/opt_alpha_cloud_wall_2dp.py:test/generic/opt_alpha_cloud_wall_2dp.py])
 AC_CONFIG_LINKS([test/generic/opt_alpha_cloud_wall_3dp.py:test/generic/opt_alpha_cloud_wall_3dp.py])
 
 # Create helper script for portable MPI job startup.
@@ -734,6 +749,10 @@ if test "x$enable_doc" != xno ; then
   AC_PATH_PROG(PDFLATEX,pdflatex,no)
   AC_PATH_PROG(MAKEINDEX,makeindex,no)
   AC_PATH_PROG(BIBTEX,bibtex,no)
+  AC_CHECK_PROGS([DOXYGEN], [doxygen])
+    if test -z "$DOXYGEN";
+       then AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])
+    fi
 else
   AC_MSG_NOTICE([disable build of documents])
 fi
@@ -748,6 +767,9 @@ if test "x$enable_doc" != xno ; then
   AC_CONFIG_FILES([doc/Makefile doc/latexinc.sh])
   AC_CONFIG_LINKS([doc/latex-manual.sh:doc/latex-manual.sh])
 fi
+
+AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
+AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([doc/Doxyfile])])
 
 # Create config headers: config.h comes from autoheader-generated config.h.in,
 # fcs_config.h.in is written manually and contains the public parts of config.h,

@@ -1,11 +1,12 @@
 #
-#  Makefile for treemp and test programs
+#  Makefile for pepc
 #
 
 # Get Fortran compile rules that include preprocessing.
 include $(top_srcdir)/build-aux/fortran-rules.am
 
 AM_FCFLAGS = $(FC_MODINC)../../..
+AM_CPPFLAGS = -DSVNREVISION="\"$(SVNREVISION)\"" -DSL_PEPC_PREFIX=fcs_
 
 # -------------------------------------------------------------------------------------------
 
@@ -19,31 +20,36 @@ noinst_LIBRARIES = liblpepc.a
 pepc_raw_c_sources = bgp_core.c \
                      pepc_c_utils.c \
                      pthreads_c.c \
-		     atomic_ops.c
-pepc_raw_f90_sources = pepc_scafacos.f90 \
-                       module_libpepc_main.f90 \
-                       module_walk_pthreads.f90 \
-                       module_math_tools.f90 \
-                       module_mirror_boxes.f90 \
-                       module_allocation.f90 \
-                       module_pepc.f90 \
-                       module_branching.f90 \
-                       module_pepc_types.f90 \
+                     atomic_ops.c
+pepc_raw_f90_sources = module_atomic_ops.f90 \
+                       module_base64.f90 \
+                       module_box.f90 \
+                       module_comm_env.f90 \
+                       module_coulomb_kernels.f90 \
                        module_debug.f90 \
                        module_domains.f90 \
-                       module_spacefilling.f90 \
-                       pthreads_f.f90 \
                        module_fmm_framework.f90 \
-                       module_timings.f90 \
-                       tree_stats.f90 \
-                       module_htable.f90 \
-                       module_tree.f90 \
-                       treevars.f90 \
                        module_interaction_specific.f90 \
-                       module_utils.f90 \
                        module_interaction_specific_types_XYZQ.f90 \
-                       module_walk_communicator.f90 \
-		       module_atomic_ops.f90
+                       module_libpepc_main.f90 \
+                       module_math_tools.f90 \
+                       module_mirror_boxes.f90 \
+                       module_pepc.f90 \
+                       module_pepc_types.f90 \
+                       module_pepc_wrappers.f90 \
+                       module_sort.f90 \
+                       module_spacefilling.f90 \
+                       module_timings.f90 \
+                       module_tree.f90 \
+                       module_tree_communicator.f90 \
+                       module_tree_grow.f90 \
+                       module_tree_node.f90 \
+                       module_utils.f90 \
+                       module_vtk.f90 \
+                       module_walk_pthreads.f90 \
+                       pepc_scafacos.f90 \
+                       pthreads_f.f90 \
+                       treevars.f90
 
 liblpepc_a_SOURCES = $(pepc_raw_c_sources)
 
@@ -60,7 +66,7 @@ PP_FILES_PP.o = $(addsuffix .$(PP_SUFFIX).o,$(basename $(PP_FILES)))
 %.$(PP_SUFFIX).f90: %.f90 $(ALL_INCLUDE_HEADER) 
 	@echo "Building file '$@'" 
 	cat $(ALL_INCLUDE_HEADER) $< | \
-	cpp -P -C -DSVNREVISION="\"$(SVNREVISION)\"" $(AM_CPPFLAGS) $(CPPFLAGS) $(DEFAULT_INCLUDES) | \
+	cpp -P -C $(AM_CPPFLAGS) $(CPPFLAGS) $(DEFAULT_INCLUDES) | \
 	sed '/\/\*\(.*\)\*\//{s,,!\1,p;d;};/\/\*/,/\*\//{s,/\*,,; s,\*/,,; s,^,!,p; d;}' > $@
 
 %.o: %.f90

@@ -85,6 +85,7 @@ cfg_di_versions=false  # false|config|makefile
 cfg_interface=true
 cfg_makefile=true
 cfg_makefile_in=
+cfg_prefix=
 cfg_autoconf=
 cfg_automake=
 cfg_automake_libname=libsl.a
@@ -104,6 +105,7 @@ cfg_tuning=
 
 cfg_license_file=
 
+cfg_makefile_makefile_in=
 cfg_makefile_target=
 cfg_makefile_sl_use_mpi=
 cfg_makefile_all=libsl
@@ -203,13 +205,13 @@ print_settings()
   local prefix="$2"
 
   local list1="my_pwd cfg_config cfg_config_not"
-  local list2="cfg_di_versions cfg_makefile_sl_use_mpi cfg_local cfg_makefile cfg_autoconf cfg_automake cfg_interface cfg_source cfg_source_rename cfg_source_ref cfg_source_ref_set"
+  local list2="cfg_di_versions cfg_makefile_sl_use_mpi cfg_local cfg_makefile cfg_makefile_in cfg_prefix cfg_autoconf cfg_automake cfg_interface cfg_source cfg_source_rename cfg_source_ref cfg_source_ref_set"
 
   local list_src="src_sl src_sl_src src_sl_src_sub src_sl_extra src_sl_extra_sub src_sl_scripts src_sl_scripts_sub src_sl_adds src_sl_adds_sub"
   local list_dst="dst_sl dst_sl_src dst_sl_src_sub dst_sl_extra dst_sl_extra_sub dst_sl_scripts dst_sl_scripts_sub dst_sl_adds dst_sl_adds_sub dst_if dst_if_sub"
   local list_dst="ref_sl ref_sl_src ref_sl_extra ref_sl_scripts ref_sl_adds"
 
-  local list_mf="cfg_makefile_target cfg_makefile_sl_use_mpi cfg_makefile_all cfg_makefile_quiet cfg_makefile_fixed cfg_makefile_bulk_ar cfg_makefile_incdir cfg_makefile_libdir"
+  local list_mf="cfg_makefile_makefile_in cfg_makefile_target cfg_makefile_sl_use_mpi cfg_makefile_all cfg_makefile_quiet cfg_makefile_fixed cfg_makefile_bulk_ar cfg_makefile_incdir cfg_makefile_libdir"
   local list_mf_wrap="cfg_makefile_wrapper_src cfg_makefile_wrapper_prefix cfg_makefile_wrapper_mpi_src cfg_makefile_wrapper_mpi_prefix"
   local list_mf_exec="cfg_makefile_exec cfg_makefile_exec_src cfg_makefile_exec_prefix cfg_makefile_exec_mpi_src cfg_makefile_exec_mpi_prefix"
 
@@ -457,6 +459,16 @@ for opt in $all ; do
       opt_isset=true
       cfg_source_ref_set=true
       ;;
+    -prefix | --prefix)
+      prev=cfg_prefix
+      append=true
+      ;;
+    -prefix=* | --prefix=*)
+      prev=cfg_prefix
+      append=true
+      opt=${optarg}
+      opt_isset=true
+      ;;
     -extra | --extra)
       cfg_extra=true
       ;;
@@ -620,6 +632,12 @@ for opt in $all ; do
       ;;
     -mf-target=* | --mf-target=* | -target=* | --target=*)
       cfg_makefile_target=${optarg}
+      ;;
+    -mf-makefile-in | --mf-makefile-in | -makefile-in | --makefile-in)
+      prev=cfg_makefile_makefile_in
+      ;;
+    -mf-makefile-in=* | --mf-makefile-in=* | -makefile-in=* | --makefile-in=*)
+      cfg_makefile_makefile_in=${optarg}
       ;;
     -mf-sl-use-mpi | --mf-sl-use-mpi | -sl-use-mpi | --sl-use-mpi)
       prev=cfg_makefile_sl_use_mpi
@@ -818,7 +836,7 @@ canonize_dir dst_sl dst_sl_src dst_sl_extra dst_sl_scripts dst_sl_adds dst_if
 # verify settings
 
 # cfg_config
-[ ! -e "${cfg_config}" ] && perror_exit "configuration directory/file '${cfg_config}' does not exist!"
+[ -n "${cfg_config}" -a ! -e "${cfg_config}" ] && perror_exit "configuration directory/file '${cfg_config}' does not exist!"
 
 # src_sl
 [ -n "${src_sl}" -a ! -d "${src_sl}" ] && perror_exit "source directory '${src_sl}' does not exist!"
@@ -978,7 +996,7 @@ if [ -n "${cfg_clean}" ] ; then
 
   pprogress ""
   pprogress -n " removing local files ..."
-  
+
   rm -rf ${dst}sl_config.h ${dst}sl_environment.h ${dst}sl_tune.h ${dst}sl_tune_auto.h ${dst}sl_extra.h
   rm -rf autom4te.cache config.log config.status configure
 
@@ -1409,12 +1427,24 @@ if [ "${cfg_source}" = "single" ] ; then
     create_file_far_sed "${src_sl}sl_tune.sh" "${current_dst}"
   fi
 
+  if [ -n "${dst_sl_extra_sub}" ] ; then
+    current_dst_sl_extra="${current_dst}${dst_sl_extra}"
+  else
+    current_dst_sl_extra="${dst_sl_extra}"
+  fi
+  
+  pdebug "current_dst_sl_extra: ${current_dst_sl_extra}"
+
   # extra
   if [ -n "${cfg_extra}" ] ; then
     pprogress ""
     pprogress "   creating extra files ..."
 
-#    create_extra "DUMMY" "${current_dst}"
+    create_sources "${src_sl_extra}" "${current_dst_sl_extra}" "" "*"
+
+    for x in ${cfg_extras} include ; do
+      create_sources "${src_sl_extra}" "${current_dst_sl_extra}" "${x}/" "*.[hc]"
+    done
   fi
 
   # scripts
@@ -1582,18 +1612,18 @@ for current_config_file in ${all_config_files} ; do
     ${cmd_far} begin                                                                           > ${far_script_interface}
 
     # make rename-script for type to <prefix>_type
-    ${cmd_far} mod_list 1 "${src_adds}names_types" ":" "${current_config_name}_:"             >> ${far_script_interface}
-    ${cmd_far} mod_list 1 "${src_adds}spec_names_types" ":" "${current_config_name}_:"        >> ${far_script_interface}
+    ${cmd_far} mod_list 1 "${src_adds}names_types" ":" "${cfg_prefix}${current_config_name}_:"             >> ${far_script_interface}
+    ${cmd_far} mod_list 1 "${src_adds}spec_names_types" ":" "${cfg_prefix}${current_config_name}_:"        >> ${far_script_interface}
     # make rename-script for macro to <prefix>_macro
-    ${cmd_far} mod_list 1 "${src_adds}names_macros" ":" "${current_config_name}_:"            >> ${far_script_interface}
-    ${cmd_far} mod_list 1 "${src_adds}spec_names_macros" ":" "${current_config_name}_:"       >> ${far_script_interface}
+    ${cmd_far} mod_list 1 "${src_adds}names_macros" ":" "${cfg_prefix}${current_config_name}_:"            >> ${far_script_interface}
+    ${cmd_far} mod_list 1 "${src_adds}spec_names_macros" ":" "${cfg_prefix}${current_config_name}_:"       >> ${far_script_interface}
     # make rename-script for [variable|function] to <prefix>_[variable|function]
-    ${cmd_far} mod_list 1 "${src_adds}names_oxl_all_variables" ":" "${current_config_name}_:" >> ${far_script_interface}
-    ${cmd_far} mod_list 1 "${src_adds}names_oxl_all_functions" ":" "${current_config_name}_:" >> ${far_script_interface}
+    ${cmd_far} mod_list 1 "${src_adds}names_oxl_all_variables" ":" "${cfg_prefix}${current_config_name}_:" >> ${far_script_interface}
+    ${cmd_far} mod_list 1 "${src_adds}names_oxl_all_functions" ":" "${cfg_prefix}${current_config_name}_:" >> ${far_script_interface}
     # make rename-script for QWERTZ_macro to macro
-    ${cmd_far} mod_list 1 "${src_adds}names_macros" "QWERTZ_:" ":"                            >> ${far_script_interface}
+    ${cmd_far} mod_list 1 "${src_adds}names_macros" "QWERTZ_:" ":"                                         >> ${far_script_interface}
 
-    ${cmd_far} end                                                                            >> ${far_script_interface}
+    ${cmd_far} end                                                                                         >> ${far_script_interface}
 
     create_sl_interface "${dst_interface}" "${current_config_name}" "${current_config_file}" "${current_tune_file}" "${config_tune}" "${src_config_tune}" "${src_include}" "${far_script_interface}"
 
@@ -1615,7 +1645,7 @@ pprogress " installing configurations in '${dst_sl}' finished!"
 
 
 # setup makefile-find-and-replace string
-makefile_makefile_in="${cfg_makefile_in}"
+makefile_makefile_in="${cfg_makefile_makefile_in}"
 
 
 # Makefile
@@ -1629,6 +1659,7 @@ if [ -n "${cfg_makefile}" ] ; then
   makefile_target="${cfg_makefile_target}"
   makefile_quiet="${cfg_makefile_quiet}"
   makefile_bulk_ar="${cfg_makefile_bulk_ar}"
+  makefile_prefix="${cfg_prefix}"
   makefile_extra="${cfg_extra}"
   makefile_extra_prefix="${cfg_extra_prefix}"
   if [ "${cfg_source}" = "ref" ] ; then
@@ -1671,11 +1702,14 @@ if [ -n "${cfg_makefile}" ] ; then
   create_far_entry "FAR" "${makefile_far}" "${far_script_makefile}"
   create_far_entry "TARGET" "${makefile_target}" "${far_script_makefile}"
   create_far_entry "QUIET" "${makefile_quiet}" "${far_script_makefile}"
-  create_far_entry "EXTRA" "${makefile_extra}" "${far_script_makefile}"
-  create_far_entry "EXTRA_PREFIX" "${makefile_extra_prefix}" "${far_script_makefile}"
   create_far_entry "BULK_AR" "${makefile_bulk_ar}" "${far_script_makefile}"
   create_far_entry "SRCBASE" "${makefile_srcbase}" "${far_script_makefile}"
   create_far_entry "ALL" "${makefile_all}" "${far_script_makefile}"
+
+  create_far_entry "PREFIX" "${makefile_extra}" "${far_script_makefile}"
+
+  create_far_entry "EXTRA" "${makefile_extra}" "${far_script_makefile}"
+  create_far_entry "EXTRA_PREFIX" "${makefile_extra_prefix}" "${far_script_makefile}"
 
   create_far_entry "WRAPPER_SRC" "${makefile_wrapper_src}" "${far_script_makefile}"
   create_far_entry "WRAPPER_PREFIX" "${makefile_wrapper_prefix}" "${far_script_makefile}"
@@ -1716,10 +1750,12 @@ fi
 
 # Makefile.in
 if [ -n "${cfg_makefile_in}" ] ; then
-  if [ -f "${cfg_makefile_in}" -a ! -f "${dst_sl}${makefile_makefile_in}" ] ; then
+  mf_in_src="${src_sl}${cfg_makefile_in}"
+  mf_in_dst="${dst_sl}${makefile_makefile_in}"
+  if [ -f "${mf_in_src}" ] ; then
     pprogress ""
-    pprogress " creating ${makefile_makefile_in} ..."
-    create_file_far_sed "${cfg_makefile_in}" "${dst_sl}${makefile_makefile_in}"
+    pprogress " creating ${mf_in_dst} ..."
+    create_file_far_sed "${mf_in_src}" "${mf_in_dst}"
   fi
 fi
 
@@ -1779,6 +1815,13 @@ if [ -n "${cfg_automake}" ] ; then
       current_dst_sl_src="${dst_sl_src}"
       sub_src=
     fi
+    if [ -n "${dst_sl_extra_sub}" ] ; then
+      current_dst_sl_extra="${dst_sl}"
+      sub_extra="${dst_sl_extra}"
+    else
+      current_dst_sl_extra="${dst_sl_extra}"
+      sub_extra=
+    fi
   fi
 
   pdebug "current_dst_sl_src: ${current_dst_sl_src}"
@@ -1817,7 +1860,7 @@ if [ -n "${cfg_automake}" ] ; then
   echo ""
   for c in ${config_names} ; do
     echo "libsl_${c}_a_CPPFLAGS = \\"
-    echo -n "  -DSL_PREFIX=${c}_ -DSL_USE_MPI"
+    echo -n "  -DSL_PREFIX=${cfg_prefix}${c}_ -DSL_USE_MPI"
     if [ "${cfg_source}" = "ref" -o "${cfg_source}" = "single" ] ; then
       echo -n " -I\$(srcdir_sl_source)/include -I\$(srcdir_sl)/sl_${c}"
     elif [ "${cfg_source}" = "separate" ] ; then
@@ -1828,7 +1871,7 @@ if [ -n "${cfg_automake}" ] ; then
   done
   if [ -n "${cfg_extra}" ] ; then
     echo "libsl_extra_a_CPPFLAGS = \\"
-    echo -n "  -DSL_EXTRA_PREFIX=${cfg_extra_prefix} -DZMPI_PREFIX=${cfg_extra_prefix}"
+    echo -n "  -DZ_PREFIX=${cfg_extra_prefix} -DZMPI_PREFIX=${cfg_extra_prefix}"
     for x in ${cfg_extra_include} ; do
       echo -n " -DHAVE_`echo ${x} | tr [a-z] [A-Z]`_H -I\$(srcdir_sl_extra)/${x}"
     done

@@ -59,6 +59,8 @@
  */
 #define FCS_1_SQRTPI  FCS_CONST(0.5641895835477562869480794515607726)  /* 1/sqrt(pi) */
 #define FCS_SQRTPI    FCS_CONST(1.7724538509055160272981674833411452)  /* sqrt(pi) */
+#define FCS_PISQR     FCS_CONST(9.8696044010893586188344909998761511)  /* pi^2 */
+#define FCS_EULER     FCS_CONST(0.5772156649015328606065120900824024)  /* Euler-Mascheroni constant */
 
 /**
  * @brief definition of a boolean data type
@@ -97,6 +99,7 @@ typedef fcs_int fcs_bool;
 #define FCS_MMM1D 41
 #define FCS_EWALD 42
 #define FCS_MMM2D 43
+#define FCS_WOLF 44
 
 /**
  * @brief definitions of tolerance types

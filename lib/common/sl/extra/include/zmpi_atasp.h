@@ -873,21 +873,21 @@ typedef struct _ZMPI_Tproc_exdef {
 
 #define ZMPI_TPROC_EXDEF_NULL  NULL
 
-#define ZMPI_TPROC_EXDEF_DEFINE_TPROC(_name_, _tp_) \
-  zmpi_SPEC_DEFINE_TPROC(_name_, _tp_) \
-  const struct _ZMPI_Tproc_exdef _##_name_ = { 1, zmpi_SPEC_EXT_PARAM_TPROC(_name_), zmpi_SPEC_EXT_PARAM_TPROC_MOD_NULL, zmpi_SPEC_EXT_PARAM_TPROCS_NULL, zmpi_SPEC_EXT_PARAM_TPROCS_MOD_NULL }, *_name_ = &_##_name_;
+#define ZMPI_TPROC_EXDEF_DEFINE_TPROC(_name_, _tp_, _s_...) \
+  zmpi_SPEC_DEFINE_TPROC(_name_, _tp_, _s_) \
+  _s_ const struct _ZMPI_Tproc_exdef _##_name_ = { 1, zmpi_SPEC_EXT_PARAM_TPROC(_name_), zmpi_SPEC_EXT_PARAM_TPROC_MOD_NULL, zmpi_SPEC_EXT_PARAM_TPROCS_NULL, zmpi_SPEC_EXT_PARAM_TPROCS_MOD_NULL }, *_name_ = &_##_name_;
 
-#define ZMPI_TPROC_EXDEF_DEFINE_TPROC_MOD(_name_, _tp_) \
-  zmpi_SPEC_DEFINE_TPROC_MOD(_name_, _tp_) \
-  const struct _ZMPI_Tproc_exdef _##_name_ = { 2, zmpi_SPEC_EXT_PARAM_TPROC_NULL, zmpi_SPEC_EXT_PARAM_TPROC_MOD(_name_), zmpi_SPEC_EXT_PARAM_TPROCS_NULL, zmpi_SPEC_EXT_PARAM_TPROCS_MOD_NULL }, *_name_ = &_##_name_;
+#define ZMPI_TPROC_EXDEF_DEFINE_TPROC_MOD(_name_, _tp_, _s_...) \
+  zmpi_SPEC_DEFINE_TPROC_MOD(_name_, _tp_, _s_) \
+  _s_ const struct _ZMPI_Tproc_exdef _##_name_ = { 2, zmpi_SPEC_EXT_PARAM_TPROC_NULL, zmpi_SPEC_EXT_PARAM_TPROC_MOD(_name_), zmpi_SPEC_EXT_PARAM_TPROCS_NULL, zmpi_SPEC_EXT_PARAM_TPROCS_MOD_NULL }, *_name_ = &_##_name_;
 
-#define ZMPI_TPROC_EXDEF_DEFINE_TPROCS(_name_, _tp_) \
-  zmpi_SPEC_DEFINE_TPROCS(_name_, _tp_) \
-  const struct _ZMPI_Tproc_exdef _##_name_ = { 3, zmpi_SPEC_EXT_PARAM_TPROC_NULL, zmpi_SPEC_EXT_PARAM_TPROC_MOD_NULL, zmpi_SPEC_EXT_PARAM_TPROCS(_name_), zmpi_SPEC_EXT_PARAM_TPROCS_MOD_NULL }, *_name_ = &_##_name_;
+#define ZMPI_TPROC_EXDEF_DEFINE_TPROCS(_name_, _tp_, _s_...) \
+  zmpi_SPEC_DEFINE_TPROCS(_name_, _tp_, _s_) \
+  _s_ const struct _ZMPI_Tproc_exdef _##_name_ = { 3, zmpi_SPEC_EXT_PARAM_TPROC_NULL, zmpi_SPEC_EXT_PARAM_TPROC_MOD_NULL, zmpi_SPEC_EXT_PARAM_TPROCS(_name_), zmpi_SPEC_EXT_PARAM_TPROCS_MOD_NULL }, *_name_ = &_##_name_;
 
-#define ZMPI_TPROC_EXDEF_DEFINE_TPROCS_MOD(_name_, _tp_) \
-  zmpi_SPEC_DEFINE_TPROCS_MOD(_name_, _tp_) \
-  const struct _ZMPI_Tproc_exdef _##_name_ = { 4, zmpi_SPEC_EXT_PARAM_TPROC_NULL, zmpi_SPEC_EXT_PARAM_TPROC_MOD_NULL, zmpi_SPEC_EXT_PARAM_TPROCS_NULL, zmpi_SPEC_EXT_PARAM_TPROCS_MOD(_name_) }, *_name_ = &_##_name_;
+#define ZMPI_TPROC_EXDEF_DEFINE_TPROCS_MOD(_name_, _tp_, _s_...) \
+  zmpi_SPEC_DEFINE_TPROCS_MOD(_name_, _tp_, _s_) \
+  _s_ const struct _ZMPI_Tproc_exdef _##_name_ = { 4, zmpi_SPEC_EXT_PARAM_TPROC_NULL, zmpi_SPEC_EXT_PARAM_TPROC_MOD_NULL, zmpi_SPEC_EXT_PARAM_TPROCS_NULL, zmpi_SPEC_EXT_PARAM_TPROCS_MOD(_name_) }, *_name_ = &_##_name_;
 
 int ZMPI_Tproc_create_tproc(ZMPI_Tproc *tproc, ZMPI_TPROC_FN *tfn, ZMPI_TPROC_RESET_FN *rfn, ZMPI_Tproc_exdef exdef);
 int ZMPI_Tproc_create_tproc_mod(ZMPI_Tproc *tproc, ZMPI_TPROC_MOD_FN *tfn, ZMPI_TPROC_RESET_FN *rfn, ZMPI_Tproc_exdef exdef);
@@ -895,14 +895,14 @@ int ZMPI_Tproc_create_tprocs(ZMPI_Tproc *tproc, ZMPI_TPROCS_FN *tfn, ZMPI_TPROC_
 int ZMPI_Tproc_create_tprocs_mod(ZMPI_Tproc *tproc, ZMPI_TPROCS_MOD_FN *tfn, ZMPI_TPROC_RESET_FN *rfn, ZMPI_Tproc_exdef exdef);
 int ZMPI_Tproc_free(ZMPI_Tproc *tproc);
 
-int ZMPI_Tproc_set_neighbors(ZMPI_Tproc *tproc, int nneighbors, int *neighbors, MPI_Comm comm);
-int ZMPI_Tproc_set_proclists(ZMPI_Tproc *tproc, int ndstprocs, int *dstprocs, int nsrcprocs, int *srcprocs, MPI_Comm comm);
+int ZMPI_Tproc_set_neighbors(ZMPI_Tproc tproc, int nneighbors, int *neighbors, MPI_Comm comm);
+int ZMPI_Tproc_set_proclists(ZMPI_Tproc tproc, int ndstprocs, int *dstprocs, int nsrcprocs, int *srcprocs, MPI_Comm comm);
 
 typedef int ZMPI_ALLTOALL_SPECIFIC_FN(void *sbuf, int scount, MPI_Datatype stype, void *rbuf, int rcount, MPI_Datatype rtype, ZMPI_Tproc tproc, void *tproc_data, int *received, MPI_Comm comm);
 
 int ZMPI_Alltoall_specific(void *sbuf, int scount, MPI_Datatype stype, void *rbuf, int rcount, MPI_Datatype rtype, ZMPI_Tproc tproc, void *tproc_data, int *received, MPI_Comm comm);
 
-/*int ZMPI_Neighbor_alltoall_specific(void *sbuf, int scount, MPI_Datatype stype, void *rbuf, int rcount, MPI_Datatype rtype, ZMPI_Tproc tproc, void *tproc_data, int *received, MPI_Comm comm);*/
+int ZMPI_Neighbor_alltoall_specific(void *sbuf, int scount, MPI_Datatype stype, void *rbuf, int rcount, MPI_Datatype rtype, ZMPI_Tproc tproc, void *tproc_data, int *received, MPI_Comm comm);
 
 
 #endif /* __ZMPI_ATASP_H__ */

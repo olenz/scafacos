@@ -178,6 +178,9 @@ FCSResult fcs_init ( FCS *handle, const char* method, MPI_Comm communicator )
 #ifdef FCS_ENABLE_VMG
   (*handle)->vmg_param = NULL;
 #endif
+#ifdef FCS_ENABLE_WOLF
+  (*handle)->wolf_param = NULL;
+#endif
 
   (*handle)->set_max_particle_move = NULL;
   (*handle)->set_resort = NULL;
@@ -298,6 +301,14 @@ FCSResult fcs_init ( FCS *handle, const char* method, MPI_Comm communicator )
   }
 #endif
 
+#ifdef FCS_ENABLE_WOLF
+  if (strcmp(method, "wolf") == 0) {
+    (*handle)->method = FCS_WOLF;
+    (*handle)->wolf_param = (fcs_wolf_parameters) malloc(sizeof(fcs_wolf_parameters_t));
+    return fcs_wolf_init(*handle);
+  }
+#endif
+
   /* if we got here, method was chosen wrongly */
   return fcsResult_create(FCS_WRONG_ARGUMENT, fnc_name, "unknown method chosen");
 }
@@ -395,6 +406,13 @@ FCSResult fcs_destroy(FCS handle) {
     return result;
       break;
 #endif
+#ifdef FCS_ENABLE_WOLF
+    case FCS_WOLF:
+      result = fcs_wolf_destroy(handle);
+      free(handle->wolf_param);
+      if (result != NULL) return result;
+      break;
+#endif
     default:
       return fcsResult_create(FCS_WRONG_ARGUMENT, fnc_name, "unknown method chosen");
     }
@@ -482,6 +500,11 @@ FCSResult fcs_tune(FCS handle, fcs_int local_particles, fcs_int local_max_partic
 #ifdef FCS_ENABLE_VMG
             case FCS_VMG:
                 result = fcs_vmg_tune(handle, local_particles, local_max_particles, positions, charges);
+                return result;
+#endif
+#ifdef FCS_ENABLE_WOLF
+            case FCS_WOLF:
+                result = fcs_wolf_tune(handle, local_particles, local_max_particles, positions, charges);
                 return result;
 #endif
             default:
@@ -574,6 +597,11 @@ FCSResult fcs_run(FCS handle, fcs_int local_particles, fcs_int local_max_particl
 #ifdef FCS_ENABLE_VMG
             case FCS_VMG:
                 result = fcs_vmg_run(handle, local_particles, local_max_particles, positions, charges, field, potentials);
+                return result;
+#endif
+#ifdef FCS_ENABLE_WOLF
+            case FCS_WOLF:
+                result = fcs_wolf_run(handle, local_particles, local_max_particles, positions, charges, field, potentials);
                 return result;
 #endif
             default:
@@ -1200,6 +1228,11 @@ void fcs_printHandle(FCS handle)
       printf("chosen method: vmg\n");
       break;
 #endif
+#ifdef FCS_ENABLE_WOLF
+    case FCS_WOLF:
+      printf("chosen method: wolf solver\n");
+      break;
+#endif
     default:
       printf("chosen method: UNKNOWN\n");
       break;
@@ -1279,7 +1312,7 @@ void fcs_printHandle(FCS handle)
       fcs_mmm1d_get_far_switch_radius(handle, &radius);
       fcs_mmm1d_get_bessel_cutoff(handle, &cutoff);
       fcs_mmm1d_get_maxPWerror(handle, &PWerror);
-      printf("mmm1d bessel cutoff: %d\n", cutoff);
+      printf("mmm1d bessel cutoff: %" FCS_LMOD_INT "d\n", cutoff);
       printf("mmm1d far switch radius: %e\n", radius);
       printf("mmm1d maximum PWerror: %e\n", PWerror);
       break;
@@ -1299,7 +1332,7 @@ void fcs_printHandle(FCS handle)
       fcs_mmm2d_get_skin(handle, &skin);
       printf("mmm2d dielectric contrasts: %e %e\n", contrasts_min, contrasts_max);
       printf("mmm2d far cutoff: %e\n", cutoff);
-      printf("mmm2d layer per node: %d\n", layers);
+      printf("mmm2d layer per node: %" FCS_LMOD_INT "d\n", layers);
       printf("mmm2d maximum PWerror: %e\n", PWerror);
       printf("mmm2d skin: %e\n", skin);
       break;
@@ -1316,8 +1349,8 @@ void fcs_printHandle(FCS handle)
         if ((res = fcs_pepc_get_num_walk_threads(handle, &num_walk_threads))) fcsResult_printResult(res);
         printf("pepc theta: %e\n", theta);
         printf("pepc epsilon: %e\n", eps);
-        printf("pepc num_walk_threads: %d\n", num_walk_threads);
-        printf("pepc user requires virial: %4d\n", handle->pepc_param->requirevirial);
+        printf("pepc num_walk_threads: %" FCS_LMOD_INT "d\n", num_walk_threads);
+        printf("pepc user requires virial: %4" FCS_LMOD_INT "d\n", handle->pepc_param->requirevirial);
         break;
       }
 #endif
@@ -1367,16 +1400,16 @@ void fcs_printHandle(FCS handle)
 	fcs_pp3mg_get_distribution(handle, &distribution);
 	fcs_pp3mg_get_discretization(handle, &discretization);
  
-	printf("pp3mg cells x: %i\n",cells_x);
-	printf("pp3mg cells y: %i\n",cells_y);
-	printf("pp3mg cells z: %i\n",cells_z);
-	printf("pp3mg ghosts: %i\n",ghosts);
-	printf("pp3mg degree: %i\n",degree);
-	printf("pp3mg max_particles: %i\n",max_particles);
-	printf("pp3mg max_iterations: %i\n",max_iterations);
+	printf("pp3mg cells x: %" FCS_LMOD_INT "d\n",cells_x);
+	printf("pp3mg cells y: %" FCS_LMOD_INT "d\n",cells_y);
+	printf("pp3mg cells z: %" FCS_LMOD_INT "d\n",cells_z);
+	printf("pp3mg ghosts: %" FCS_LMOD_INT "d\n",ghosts);
+	printf("pp3mg degree: %" FCS_LMOD_INT "d\n",degree);
+	printf("pp3mg max_particles: %" FCS_LMOD_INT "d\n",max_particles);
+	printf("pp3mg max_iterations: %" FCS_LMOD_INT "d\n",max_iterations);
 	printf("pp3mg tol: %e\n",tol);
-	printf("pp3mg distribution: %d\n",distribution);
-	printf("pp3mg discretization: %d\n",discretization);
+	printf("pp3mg distribution: %" FCS_LMOD_INT "d\n",distribution);
+	printf("pp3mg discretization: %" FCS_LMOD_INT "d\n",discretization);
       }
       break;
 #endif
@@ -1401,15 +1434,19 @@ void fcs_printHandle(FCS handle)
       fcs_vmg_get_interpolation_order(handle, &interpolation_order);
       fcs_vmg_get_discretization_order(handle, &discretization_order);
 
-      printf("vmg max level:            %i\n", level);
-      printf("vmg max iterations:       %i\n", max_iter);
-      printf("vmg smoothing steps:      %i\n", smoothing_steps);
-      printf("vmg cycle_type:                %i\n", cycle_type);
+      printf("vmg max level:            %" FCS_LMOD_INT "d\n", level);
+      printf("vmg max iterations:       %" FCS_LMOD_INT "d\n", max_iter);
+      printf("vmg smoothing steps:      %" FCS_LMOD_INT "d\n", smoothing_steps);
+      printf("vmg cycle_type:           %" FCS_LMOD_INT "d\n", cycle_type);
       printf("vmg precision:            %e\n", precision);
-      printf("vmg near field cells:     %i\n", near_field_cells);
-      printf("vmg interpolation degree: %i\n", interpolation_order);
-      printf("vmg discretization order: %i\n", discretization_order);
+      printf("vmg near field cells:     %" FCS_LMOD_INT "d\n", near_field_cells);
+      printf("vmg interpolation degree: %" FCS_LMOD_INT "d\n", interpolation_order);
+      printf("vmg discretization order: %" FCS_LMOD_INT "d\n", discretization_order);
     }
+      break;
+#endif
+#ifdef FCS_ENABLE_WOLF
+    case FCS_WOLF:
       break;
 #endif
     default:
@@ -1631,16 +1668,16 @@ FCSResult fcs_parser(FCS handle, const char *parameters, fcs_bool continue_on_er
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("fmm_balanceload",       fmm_set_balanceload,       PARSE_VAL(fcs_long_long_t));
 #endif
 #ifdef FCS_ENABLE_MEMD
-/*    IF_PARAM_THEN_FUNC3_GOTO_NEXT("", memd_set_box_size,                  PARSE_VAL(fcs_float), PARSE_VAL(fcs_float), PARSE_VAL(fcs_float));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", memd_set_time_step,                 PARSE_VAL(fcs_float));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", memd_set_total_number_of_particles, PARSE_VAL(fcs_int));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", memd_set_local_number_of_particles, PARSE_VAL(fcs_int));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", memd_set_init_flag,                 PARSE_VAL(fcs_int));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", memd_set_mesh_size_1D,              PARSE_VAL(fcs_int));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", memd_set_speed_of_light,            PARSE_VAL(fcs_float));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", memd_set_permittivity,              PARSE_VAL(fcs_float));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", memd_set_temperature,               PARSE_VAL(fcs_float));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", memd_set_bjerrum_length,            PARSE_VAL(fcs_float));*/
+/*    IF_PARAM_THEN_FUNC3_GOTO_NEXT("", fcs_memd_set_box_size,                  PARSE_VAL(fcs_float), PARSE_VAL(fcs_float), PARSE_VAL(fcs_float));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", fcs_memd_set_time_step,                 PARSE_VAL(fcs_float));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", fcs_memd_set_total_number_of_particles, PARSE_VAL(fcs_int));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", fcs_memd_set_local_number_of_particles, PARSE_VAL(fcs_int));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", fcs_memd_set_init_flag,                 PARSE_VAL(fcs_int));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", fcs_memd_set_mesh_size_1D,              PARSE_VAL(fcs_int));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", fcs_memd_set_speed_of_light,            PARSE_VAL(fcs_float));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", fcs_memd_set_permittivity,              PARSE_VAL(fcs_float));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", fcs_memd_set_temperature,               PARSE_VAL(fcs_float));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("", fcs_memd_set_bjerrum_length,            PARSE_VAL(fcs_float));*/
 #endif
 #ifdef FCS_ENABLE_MMM1D
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("mmm1d_far_switch_radius", mmm1d_set_far_switch_radius, PARSE_VAL(fcs_float));
@@ -1659,10 +1696,14 @@ FCSResult fcs_parser(FCS handle, const char *parameters, fcs_bool continue_on_er
     /* P2NFFT specific parameters */
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_r_cut",                p2nfft_set_r_cut,                     PARSE_VAL(fcs_float));
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_epsI",                 p2nfft_set_epsI,                      PARSE_VAL(fcs_float));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_epsB",                 p2nfft_set_epsB,                      PARSE_VAL(fcs_float));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_c",                    p2nfft_set_c,                         PARSE_VAL(fcs_float));
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_alpha",                p2nfft_set_alpha,                     PARSE_VAL(fcs_float));
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_intpol_order",         p2nfft_set_interpolation_order,       PARSE_VAL(fcs_int));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_reg",                  p2nfft_set_regularization,            PARSE_VAL(fcs_int));
-    IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_reg_name",             p2nfft_set_regularization_by_name,    PARSE_VAL(fcs_p_char_t));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_reg_near",             p2nfft_set_reg_near,                  PARSE_VAL(fcs_int));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_reg_near_name",        p2nfft_set_reg_near_by_name,          PARSE_VAL(fcs_p_char_t));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_reg_far",              p2nfft_set_reg_far,                   PARSE_VAL(fcs_int));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_reg_far_name",         p2nfft_set_reg_far_by_name,           PARSE_VAL(fcs_p_char_t));
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_p",                    p2nfft_set_p,                         PARSE_VAL(fcs_int));
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_require_virial",       p2nfft_require_virial,                PARSE_VAL(fcs_int));
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("p2nfft_ignore_tolerance",     p2nfft_set_ignore_tolerance,          PARSE_VAL(fcs_int));
@@ -1734,6 +1775,10 @@ FCSResult fcs_parser(FCS handle, const char *parameters, fcs_bool continue_on_er
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("vmg_interpolation_order", vmg_set_interpolation_order, PARSE_VAL(fcs_int));
     IF_PARAM_THEN_FUNC1_GOTO_NEXT("vmg_discretization_order", vmg_set_discretization_order, PARSE_VAL(fcs_int));
 #endif
+#ifdef FCS_ENABLE_WOLF
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("wolf_cutoff", wolf_set_cutoff, PARSE_VAL(fcs_float));
+    IF_PARAM_THEN_FUNC1_GOTO_NEXT("wolf_alpha", wolf_set_alpha, PARSE_VAL(fcs_float));
+#endif
 
     DUMMY_REFERENCE_TO_STATIC_FUNCTIONS(param);
 
@@ -1763,6 +1808,10 @@ FCSResult fcs_require_virial(FCS handle, fcs_int flag)
 
     switch(fcs_get_method(handle))
     {
+#ifdef FCS_ENABLE_DIRECT
+        case FCS_DIRECT:
+            return fcs_direct_require_virial(handle, flag);
+#endif
 #ifdef FCS_ENABLE_PEPC
         case FCS_PEPC:
             return fcs_pepc_require_virial(handle, flag);
@@ -1799,9 +1848,9 @@ FCSResult fcs_require_virial(FCS handle, fcs_int flag)
         case FCS_VMG:
             return fcs_vmg_require_virial(handle, flag);
 #endif
-#ifdef FCS_ENABLE_DIRECT
-        case FCS_DIRECT:
-            return fcs_direct_require_virial(handle, flag);
+#ifdef FCS_ENABLE_WOLF
+        case FCS_WOLF:
+            return fcs_wolf_require_virial(handle, flag);
 #endif
         default:
             return fcsResult_create(FCS_WRONG_ARGUMENT, fnc_name, "unknown method chosen");
@@ -1820,6 +1869,10 @@ FCSResult fcs_get_virial(FCS handle, fcs_float *virial)
 
     switch(fcs_get_method(handle))
     {
+#ifdef FCS_ENABLE_DIRECT
+        case FCS_DIRECT:
+            return fcs_direct_get_virial(handle, virial);
+#endif
 #ifdef FCS_ENABLE_PEPC
         case FCS_PEPC:
             return fcs_pepc_get_virial(handle, virial);
@@ -1856,9 +1909,9 @@ FCSResult fcs_get_virial(FCS handle, fcs_float *virial)
         case FCS_VMG:
             return fcs_vmg_get_virial(handle, virial);
 #endif
-#ifdef FCS_ENABLE_DIRECT
-        case FCS_DIRECT:
-            return fcs_direct_get_virial(handle, virial);
+#ifdef FCS_ENABLE_WOLF
+        case FCS_WOLF:
+            return fcs_wolf_get_virial(handle, virial);
 #endif
         default:
             return fcsResult_create(FCS_WRONG_ARGUMENT, fnc_name, "unknown method chosen");
