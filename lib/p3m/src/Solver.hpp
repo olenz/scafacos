@@ -61,7 +61,10 @@ public:
     p3m_float box_l[3];
     /* Skin */
     p3m_float skin;
-
+    /* the complete box vectors */
+    p3m_float box_vectors[3][3];
+    /* Volume of the box */
+    p3m_float volume;
     /****************************************************
      * PARAMETERS OF THE METHOD
      ****************************************************/
@@ -71,7 +74,11 @@ public:
     p3m_int n_interpol;
     /** whether to compute the near field in the method */
     bool near_field_flag;
-
+    /* whether the box is triclinic */
+    bool isTriclinic; 
+    /** flag that determines if the Gaussian potentials are shifted */
+    bool shiftGaussians;
+    
     /* TUNABLE PARAMETERS */
     /** cutoff radius */
     p3m_float r_cut;
@@ -191,6 +198,9 @@ public:
     p3m_float *send_grid;
     /** Field to store grid points to recv */
     p3m_float *recv_grid;
+    
+    /** potential shift required to make real space potentials continuous */
+    p3m_float potentialOffset;
 
 private:
     // submethods of prepare()
@@ -220,6 +230,12 @@ private:
     p3m_int *computeGridShift(int dir, p3m_int size);
 
     // submethods of run()
+    
+    /* conversion of cartesian positions to triclinic positions */
+    void
+    calculateTriclinicPositions(p3m_float *positions,
+            p3m_float *triclinic_positions, p3m_int number);  
+    
     /* domain decomposition */
     void
     decompose(fcs_gridsort_t *gridsort,
@@ -274,6 +290,9 @@ private:
     assignFieldsAD(p3m_float *data,
             p3m_int num_real_particles, p3m_float* positions,
             p3m_int shifted, p3m_float* fields);
+    
+    void
+    cartesianizeFields(p3m_float *fields, p3m_int num_particles);
 
     // submethods of tune()
     struct TuneParameters {

@@ -46,6 +46,14 @@ Solver::Solver(MPI_Comm mpicomm) :
     box_l[0] = 1.0;
     box_l[1] = 1.0;
     box_l[2] = 1.0;
+
+    box_vectors[0][0] = box_vectors[1][1] = box_vectors[2][2] = 1.0;
+    box_vectors[0][1] = box_vectors[0][2] = box_vectors[1][0] = box_vectors[2][0]
+            = box_vectors[2][1] = box_vectors[1][2] = 0.0;
+    isTriclinic = false;
+    
+    shiftGaussians=false;
+
     skin = 0.0;
     tolerance_field = P3M_DEFAULT_TOLERANCE_FIELD;
     n_interpol = P3M_DEFAULT_N_INTERPOL;
@@ -160,11 +168,11 @@ void printSendGrid(send_grid_t sm);
      All parameters have to be set. */
 void Solver::prepare() {
     P3M_DEBUG(printf("  P3M::Solver::prepare() started... \n"));
-
+    comm.prepare(box_l);
     /* Initializes the (inverse) grid constant ai and the cutoff for charge
      * assignment cao_cut. */
     for (p3m_int i=0; i<3; i++) {
-        ai[i]      = grid[i]/box_l[i];
+        ai[i]      = grid[i]/(isTriclinic?1.0:box_l[i]);
         a[i]       = 1.0/ai[i];
         cao_cut[i] = 0.5*a[i]*cao;
     }
@@ -198,6 +206,7 @@ void Solver::prepare() {
     ks_grid = fft.malloc_data();
 
     /* k-space part */
+#if defined(P3M_IK) 
     /* Calculates the Fourier transformed differential operator.
      *  Remark: This is done on the level of n-vectors and not k-vectors,
      *           i.e. the prefactor i*2*PI/L is missing! */
@@ -211,6 +220,7 @@ void Solver::prepare() {
             d_op[i][grid[i] - j] = -j;
         }
     }
+#endif    
 
     P3M_INFO(printf("    Calculating influence function...\n"));
 #if !defined(P3M_INTERLACE) && defined(P3M_IK)
@@ -457,24 +467,35 @@ void Solver::computeInfluenceFunctionIK() {
                 } else {
                     p3m_float numerator_force[3];
                     p3m_float numerator_energy;
-                    p3m_float denominator;
+                    p3m_float sumU2;
                     this->performAliasingSumsIK(
                             gridshift_x[n[KX]],
                             gridshift_y[n[KY]],
                             gridshift_z[n[KZ]],
                             numerator_force,
                             numerator_energy,
-                            denominator);
+                            sumU2);
 
-                    const p3m_float fak1 =
-                            d_op[RX][n[KX]]*numerator_force[RX]/box_l[RX] +
-                            d_op[RY][n[KY]]*numerator_force[RY]/box_l[RY] +
-                            d_op[RZ][n[KZ]]*numerator_force[RZ]/box_l[RZ];
-                    const p3m_float fak2 =
-                            SQR(d_op[RX][n[KX]]/box_l[RX]) +
-                            SQR(d_op[RY][n[KY]]/box_l[RY]) +
-                            SQR(d_op[RZ][n[KZ]]/box_l[RZ]);
-                    const p3m_float fak3 = fak1/(fak2 * SQR(denominator));
+                    p3m_float fak1; //  k scalar numerator force (besides prefactors)
+                    p3m_float fak2; //  k squared (besides prefactors)
+                    if (!isTriclinic) {
+                        fak1 =  d_op[RX][n[KX]] * numerator_force[RX] / box_l[RX] +
+                                d_op[RY][n[KY]] * numerator_force[RY] / box_l[RY] +
+                                d_op[RZ][n[KZ]] * numerator_force[RZ] / box_l[RZ];
+                        fak2 =  SQR(d_op[RX][n[KX]] / box_l[RX]) +
+                                SQR(d_op[RY][n[KY]] / box_l[RY]) +
+                                SQR(d_op[RZ][n[KZ]] / box_l[RZ]);
+                        } else{
+                        fak1=numerator_force[RX]*(d_op[RX][n[KX]]*(box_vectors[1][1]*box_vectors[2][2]))
+                                +numerator_force[RY]*(d_op[RX][n[KX]]*(-box_vectors[1][0]*box_vectors[2][2])+d_op[RY][n[KY]]*(box_vectors[2][2]*box_vectors[0][0]))
+                                +numerator_force[RZ]*(d_op[RX][n[KX]]*(box_vectors[1][0]*box_vectors[2][1]-box_vectors[1][1]*box_vectors[2][0])-d_op[RY][n[KY]]*box_vectors[2][1]*box_vectors[0][0]+d_op[RZ][n[KZ]]*(box_vectors[0][0]*box_vectors[1][1]));//correct k
+                        fak1*=1/volume;
+                        fak2 = SQR(d_op[RX][n[KX]]*(box_vectors[1][1]*box_vectors[2][2]))
+                                +SQR(d_op[RX][n[KX]]*(box_vectors[1][0]*box_vectors[2][2])+d_op[RY][n[KY]]*(box_vectors[2][2]*box_vectors[0][0]))
+                                +SQR(d_op[RX][n[KX]]*(box_vectors[1][0]*box_vectors[2][1]-box_vectors[1][1]*box_vectors[2][0])-d_op[RY][n[KY]]*box_vectors[2][1]*box_vectors[0][0]+d_op[RZ][n[KZ]]*(box_vectors[0][0]*box_vectors[1][1]));//correct k
+                        fak2*=1/SQR(volume);
+                        }
+                    const p3m_float fak3 = fak1/(fak2 * SQR(sumU2));
                     g_force[ind] = M_2_PI*fak3;
                     g_energy[ind] = 0.5 * g_force[ind];
                     /* g_energy[ind] = M_1_PI*numerator_energy/SQR(denominator); */
@@ -495,8 +516,8 @@ void Solver::performAliasingSumsIK(
         p3m_int nmx0, p3m_int nmy0, p3m_int nmz0,
         p3m_float numerator_force[3],
         p3m_float &numerator_energy,
-        p3m_float &denominator) {
-    denominator = 0.0;
+        p3m_float &sumU2) {
+    sumU2 = 0.0;
     numerator_energy = 0.0;
     for (p3m_int i = 0; i < 3; i++)
         numerator_force[i] = 0.0;
@@ -511,19 +532,45 @@ void Solver::performAliasingSumsIK(
             const p3m_float sy  = sx*pow(sinc(nmy/(p3m_float)grid[RY]),2.0*cao);
             for (p3m_int mz = -P3M_BRILLOUIN; mz <= P3M_BRILLOUIN; mz++) {
                 const p3m_int nmz = nmz0 + grid[RZ]*mz;
-                const p3m_float sz  = sy*pow(sinc(nmz/(p3m_float)grid[RZ]),2.0*cao);
-                const p3m_float nm2 =
-                        SQR(nmx/box_l[RX]) +
-                        SQR(nmy/box_l[RY]) +
-                        SQR(nmz/box_l[RZ]);
-                const p3m_float prefactor2 = sz*exp(-prefactor*nm2)/nm2;
+                const p3m_float U2  = sy*pow(sinc(nmz/(p3m_float)grid[RZ]),2.0*cao);
+
+                p3m_float nm2 = 0.0;
+         if (!isTriclinic) {
+            nm2 =
+                    SQR(nmx / box_l[RX]) +
+                    SQR(nmy / box_l[RY]) +
+                    SQR(nmz / box_l[RZ]);
+
+            } else {
+                p3m_int i;
+                const p3m_int nNm[3] = {nmx, nmy, nmz};
+
+            for (i = 0; i < 3; i++) {
+                int j = (i + 1) % 3;
+                int k = (i + 2) % 3;
+
+            nm2 += SQR((nNm[i]*(box_vectors[j][j] * box_vectors[k][k]\
+             - box_vectors[j][k] * box_vectors[k][j]) + nNm[j]\
+             *(box_vectors[k][j] * box_vectors[i][k] - box_vectors[k][k]\
+             * box_vectors[i][j]) + nNm[k]*(box_vectors[i][j]\
+             * box_vectors[j][k] - box_vectors[i][k] * box_vectors[j][j])));
+
+                        }
+                        nm2 *= 1 / SQR(volume);
+                    }
+                const p3m_float prefactor2 = U2*exp(-prefactor*nm2)/(nm2)/(isTriclinic?volume:1.0);
 
                 numerator_energy += prefactor2;
+                if(!isTriclinic){//numerator_force = SUM prefactor2 * k/2pi =SUM U^2 exp(-pi^2/alpha^2 k^2 / 4 pi^2)) / (k^2 / (4 pi^2)) * k/2pi;
                 numerator_force[RX] += prefactor2*nmx/box_l[RX];
                 numerator_force[RY] += prefactor2*nmy/box_l[RY];
                 numerator_force[RZ] += prefactor2*nmz/box_l[RZ];
-
-                denominator  += sz;
+                }else{
+                numerator_force[RX] += prefactor2*(nmx*(box_vectors[1][1]*box_vectors[2][2]))/volume;
+                numerator_force[RY] += prefactor2*(nmx*(-box_vectors[1][0]*box_vectors[2][2])+nmy*(box_vectors[2][2]*box_vectors[0][0]))/volume;
+                numerator_force[RZ] += prefactor2*(nmx*(box_vectors[1][0]*box_vectors[2][1]-box_vectors[1][1]*box_vectors[2][0])+nmy*(-box_vectors[2][1]*box_vectors[0][0])+nmz*(box_vectors[0][0]*box_vectors[1][1]))/volume;//correct k
+                }
+                sumU2  += U2; // denominator = SUM U^2
             }
         }
     }
@@ -600,25 +647,47 @@ void Solver::performAliasingSumsADI(
        const p3m_float sy  = sx*pow(sinc(nmy/(p3m_float)grid[RY]), 2.0*cao);
        for (p3m_int mz = -P3M_BRILLOUIN; mz <= P3M_BRILLOUIN; mz++) {
          const p3m_int nmz = nmz0 + grid[RZ]*mz;
-         const p3m_float sz  = sy*pow(sinc(nmz/(p3m_float)grid[RZ]), 2.0*cao);
-         const p3m_float nm2 =
-           SQR(nmx/box_l[RX]) +
-           SQR(nmy/box_l[RY]) +
-           SQR(nmz/box_l[RZ]);
-         const p3m_float prefactor2 = sz*exp(-prefactor*nm2);
+         const p3m_float U2  = sy*pow(sinc(nmz/(p3m_float)grid[RZ]), 2.0*cao);
+         
+         p3m_float nm2 = 0.0;
+         if (!isTriclinic) {
+             nm2 =
+                     SQR(nmx / box_l[RX]) +
+                     SQR(nmy / box_l[RY]) +
+                     SQR(nmz / box_l[RZ]);
+         } else {
+             p3m_int i;
+             const p3m_int nNm[3] = {nmx, nmy, nmz};
+
+             for (i = 0; i < 3; i++) {
+                 int j = (i + 1) % 3;
+                 int k = (i + 2) % 3;
+
+                 nm2 += SQR((nNm[i]*(box_vectors[j][j] * box_vectors[k][k]\
+                 - box_vectors[j][k] * box_vectors[k][j]) + nNm[j]\
+                 *(box_vectors[k][j] * box_vectors[i][k] - box_vectors[k][k]\
+                 * box_vectors[i][j]) + nNm[k]*(box_vectors[i][j]\
+                 * box_vectors[j][k] - box_vectors[i][k] * box_vectors[j][j])));
+            }
+             
+            nm2 *= 1 / SQR(volume);
+
+        }
+        const p3m_float prefactor2 = U2 * exp(-prefactor * nm2)
+                / (isTriclinic ? volume:1.0);
 
          numerator_energy += prefactor2/nm2;
          numerator_force  += prefactor2;
 
-         denominator[0] += sz;
-         denominator[1] += sz * nm2;
+         denominator[0] += U2;
+         denominator[1] += U2 * nm2;
 
          if(((mx+my+mz) % 2) == 0) {
-           denominator[2] += sz;
-           denominator[3] += sz * nm2;
+           denominator[2] += U2;
+           denominator[3] += U2 * nm2;
          } else {
-           denominator[2] -= sz;
-           denominator[3] -= sz * nm2;
+           denominator[2] -= U2;
+           denominator[3] -= U2 * nm2;
          }
        }
      }
@@ -748,9 +817,10 @@ p3m_int *Solver::computeGridShift(int dir, int size) {
 inline void
 compute_near(const void *param, p3m_float dist, p3m_float *field, p3m_float *potential)
 {
-    const p3m_float alpha = *(static_cast<const p3m_float*>(param));
-    const p3m_float adist = alpha * dist;
-
+const near_params_t params = *(static_cast<const near_params_t*>(param));
+//    const p3m_float alpha = *(static_cast<const p3m_float*>(param));
+    const p3m_float adist = params.alpha * dist;
+    
 #ifdef P3M_USE_ERFC_APPROXIMATION
 
     /* approximate \f$ \exp(d^2) \mathrm{erfc}(d)\f$ by applying a formula from:
@@ -765,15 +835,22 @@ compute_near(const void *param, p3m_float dist, p3m_float *field, p3m_float *pot
                                             t * 1.061405429)))))
                                             / dist;
 
-    *potential = erfc_part_ri;
-    *field = -(erfc_part_ri + 2.0*alpha*0.56418958354775627928034964498*exp(-adist*adist))
+    *potential = erfc_part_ri-params.potentialOffset;
+    //printf("_______near loop offset: %e \n ",params.potentialOffset);
+   // printf("_______near loop alpha: %e \n ",params.alpha);
+    *field = -(erfc_part_ri + 2.0*params.alpha*0.56418958354775627928034964498*exp(-adist*adist))
               / dist;
 
 #else
 
     p3m_float erfc_part_ri = (1.0 - erf(adist)) / dist; /* use erf instead of erfc to fix ICC performance problems */
-    *potential = erfc_part_ri;
-    *field = -(erfc_part_ri + 2.0*alpha*0.56418958354775627928034964498*exp(-adist*adist))
+    *potential = erfc_part_ri-params.potentialOffset;
+     //   printf("erfc part ri: %f \n",erfc_part_ri);
+#ifdef ADDITIONAL_CHECKS
+        if(*potential<0.0) printf("ERROR: The calculated real space potential contribution is smaller than the potential offset.\n");
+#endif
+        
+    *field = -(erfc_part_ri + 2.0*params.alpha*0.56418958354775627928034964498*exp(-adist*adist))
               / dist;
 #endif
 
@@ -793,7 +870,13 @@ void Solver::run(
             timings[i] = 0.0;
     }
 
-    P3M_INFO(printf("    system parameters: box_l=" F3FLOAT "\n", \
+        if (isTriclinic) {
+            box_l[0] = box_l[1] = box_l[2] = 1.0;
+            this->prepare();
+        }
+    
+    P3M_INFO(printf("    "
+            "system parameters: box_l=" F3FLOAT "\n", \
             box_l[0], box_l[1], box_l[2]));
     P3M_INFO(printf(                                                      \
             "    p3m params: "                                    \
@@ -834,11 +917,29 @@ void Solver::run(
     STOP(TIMING_DECOMP);
 
 #if defined(P3M_INTERLACE) && defined(P3M_AD)
+    if(!isTriclinic){ //orthorhombic
     this->computeFarADI(num_real_particles, positions, charges, fields, potentials);
+    } else {//triclinic
+      p3m_float *positions_triclinic= new p3m_float[num_real_particles*3];
+      this->calculateTriclinicPositions(positions, positions_triclinic,num_real_particles);
+      this->computeFarADI(num_real_particles, positions_triclinic, charges, fields, potentials);
+    }
+    
 #else
+    if(!isTriclinic){ //orthorhombic
     this->computeFarIK(num_real_particles, positions, charges, fields, potentials);
+    } else {//triclinic
+      p3m_float *positions_triclinic= new p3m_float[num_real_particles*3];
+      this->calculateTriclinicPositions(positions, positions_triclinic,num_real_particles);
+      this->computeFarIK(num_real_particles, positions_triclinic, charges, fields, potentials);
+    }
+    
 #endif
 
+    if(isTriclinic){
+        for(p3m_int i=0;i<3;i++) box_l[i] = box_vectors[i][i];
+    }
+    
     if (near_field_flag) {
         /* start near timer */
         START(TIMING_NEAR);
@@ -851,11 +952,8 @@ void Solver::run(
         fcs_near_set_loop(&near, compute_near_loop);
 
         p3m_float box_base[3] = {0.0, 0.0, 0.0 };
-        p3m_float box_a[3] = {box_l[0], 0.0, 0.0 };
-        p3m_float box_b[3] = {0.0, box_l[1], 0.0 };
-        p3m_float box_c[3] = {0.0, 0.0, box_l[2] };
-        fcs_near_set_system(&near, box_base, box_a, box_b, box_c, NULL);
-
+        fcs_near_set_system(&near, box_base, box_vectors[0], box_vectors[1], box_vectors[2], NULL);
+        
         fcs_near_set_particles(&near, num_real_particles, num_real_particles,
                 positions, charges, indices,
                 (_fields != NULL) ? fields : NULL,
@@ -863,9 +961,15 @@ void Solver::run(
 
         fcs_near_set_ghosts(&near, num_ghost_particles,
                 ghost_positions, ghost_charges, ghost_indices);
-
+        
+        near_params_t params;
+      //  std::cout<<"in Solver run: flag "<<shiftGaussians<<std::endl;
+        params.alpha=alpha; params.potentialOffset=(shiftGaussians?(erfc(alpha*r_cut))/r_cut:0.0);
+      //  std::cout<<"_____erfc(ar) in Solver run: "<<erfc(alpha*r_cut)<<std::endl;
+      //  std::cout<<"_____offset in Solver run: "<<params.potentialOffset<<std::endl;
+      //   printf("\033[31;1m solver run: off %e \033[0m \n", params.potentialOffset);
         P3M_DEBUG(printf( "  calling fcs_near_compute()...\n"));
-        fcs_near_compute(&near, r_cut, &alpha, comm.mpicomm);
+        fcs_near_compute(&near, r_cut, &params, comm.mpicomm);
         P3M_DEBUG(printf( "  returning from fcs_near_compute().\n"));
 
         fcs_near_destroy(&near);
@@ -889,6 +993,10 @@ void Solver::run(
     sdelete(potentials);
 
     STOP(TIMING_COMP);
+
+    /* collect timings from the different nodes */
+    if (require_timings != NONE) this->collectPrintTimings();
+
     P3M_INFO(printf( "P3M::Solver::run() finished.\n"));
 }
 
@@ -1039,6 +1147,8 @@ void Solver::computeFarADI(
 
         this->assignFieldsAD(fft.data_buf, num_charges, positions, 1, fields);
 
+        if(isTriclinic) this->cartesianizeFields(fields, num_charges);
+                
         STOP(TIMING_FIELDS);
     }
 
@@ -1051,9 +1161,6 @@ void Solver::computeFarADI(
         else
             timings[TIMING_BACK] = timings[TIMING_FORWARD];
     }
-
-    /* collect timings from the different nodes */
-    if (require_timings!=NONE) this->collectPrintTimings();
 
     P3M_INFO(printf( "P3M::Solver::compute_far_adi() finished.\n"));
 }
@@ -1168,15 +1275,35 @@ void Solver::computeFarIK(
             timings[TIMING_BACK] = 3 * timings[TIMING_FORWARD];
     }
 
-    /* collect timings from the different nodes */
-    if (require_timings != NONE) this->collectPrintTimings();
-
     P3M_INFO(printf( "P3M::Solver::compute_far_ik() finished.\n"));
 }
 
 
 /***************************************************/
 /* RUN COMPONENTS */
+
+    void Solver::calculateTriclinicPositions(p3m_float *positions,
+            p3m_float *triclinic_positions, p3m_int number) {
+
+        for (p3m_int i = 0; i < number; i++) {
+            triclinic_positions[3 * i] = 1 / box_vectors[0][0] * positions[3 * i]
+                    - box_vectors[1][0] / (box_vectors[0][0] * box_vectors[1][1])
+                    * positions[3 * i + 1] + (box_vectors[1][0]
+                    * box_vectors[2][1] - box_vectors[1][1] * box_vectors[2][0])
+                    / (box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2])
+                    * positions[3 * i + 2];
+            triclinic_positions[3 * i + 1] = 1 / box_vectors[1][1]
+                    * positions[3 * i + 1] - box_vectors[2][1]
+                    / (box_vectors[1][1] * box_vectors[2][2])
+                    * positions[3 * i + 2];
+            triclinic_positions[3 * i + 2] = 1 / box_vectors[2][2]
+                    * positions[3 * i + 2];
+            
+            P3M_DEBUG_LOCAL(if(i<5)printf("triclinic position %d: %f %f %f \n", i,
+                    triclinic_positions[3*i],triclinic_positions[3*i+1],
+                    triclinic_positions[3*i+2]));
+        }
+    }
 
 /* domain decomposition */
 void Solver::decompose(fcs_gridsort_t *gridsort,
@@ -1190,15 +1317,15 @@ void Solver::decompose(fcs_gridsort_t *gridsort,
         fcs_gridsort_index_t **ghost_indices
 ) {
     p3m_float box_base[3] = {0.0, 0.0, 0.0 };
-    p3m_float box_a[3] = {box_l[0], 0.0, 0.0 };
-    p3m_float box_b[3] = {0.0, box_l[1], 0.0 };
-    p3m_float box_c[3] = {0.0, 0.0, box_l[2] };
+
     p3m_int num_particles;
 
     fcs_gridsort_create(gridsort);
 
-    fcs_gridsort_set_system(gridsort, box_base, box_a, box_b, box_c, NULL);
-    fcs_gridsort_set_particles(gridsort, _num_particles, _num_particles,
+            fcs_gridsort_set_system(gridsort, box_base,
+                    box_vectors[0], box_vectors[1], box_vectors[2], NULL);         
+    
+            fcs_gridsort_set_particles(gridsort, _num_particles, _num_particles,
             _positions, _charges);
 
     P3M_DEBUG(printf( "  calling fcs_gridsort_sort_forward()...\n"));
@@ -1457,13 +1584,13 @@ void Solver::collectPrintTimings() {
                 timings[TIMING_POTENTIALS]/timings[TIMING]);
         //if(require_timings == ESTIMATE_ALL //not yet implemented
         //|| require_timings == ESTIMATE_ASSIGNMENT)
-        //    printf(" (empirical estimate)");
+        //    printf(" (estimate)");
         printf("\n");
         printf("   fields=%le (%lf)", timings[TIMING_FIELDS],
                 timings[TIMING_FIELDS]/timings[TIMING]);
         //if(require_timings == ESTIMATE_ALL //not yet implemented
         //|| require_timings == ESTIMATE_ASSIGNMENT)
-        //    printf(" (empirical estimate)");
+        //    printf(" (estimate)");
         printf("\n");
         printf("   gather=%le (%lf)\n", timings[TIMING_GATHER],
                 timings[TIMING_GATHER]/timings[TIMING]);
@@ -1475,7 +1602,7 @@ void Solver::collectPrintTimings() {
                 timings[TIMING_BACK]/timings[TIMING]);
         if(require_timings == ESTIMATE_ALL
                 || require_timings == ESTIMATE_FFT)
-            printf(" (theoretical estimate)");
+            printf(" (estimate)");
         printf("\n");
         printf("   decomp=%le (%lf)\n", timings[TIMING_DECOMP],
                 timings[TIMING_DECOMP]/timings[TIMING]);
@@ -1509,13 +1636,21 @@ void Solver::differentiateIK(int dim, p3m_float* in, p3m_float* out) {
         for (j[1]=0; j[1]<fft.plan[3].new_grid[1]; j[1]++) {
             for (j[2]=0; j[2]<fft.plan[3].new_grid[2]; j[2]++) {
                 /* i*k*(Re+i*Im) = - Im*k + i*Re*k     (i=sqrt(-1)) */
-                out[ind] =
+                if (!isTriclinic) { //orthorhombic case
+                        out[ind] =
                         -2.0*M_PI*(in[ind+1] * d_operator[ j[dim]+fft.plan[3].start[dim] ])
-                        / box_l[dim_rs];
-                out[ind+1] =
+                                / box_l[dim_rs];
+                        out[ind+1] =
                         2.0*M_PI*in[ind] * d_operator[ j[dim]+fft.plan[3].start[dim] ]
-                                                               / box_l[dim_rs];
-                ind+=2;
+                                / box_l[dim_rs];
+                    } else { //triclinic case //k correct
+                        out [ind] = -2.0 * M_PI * in[ind + 1] * (d_operator[ j[dim]+fft.plan[3].start[dim] ]*(box_vectors[(dim+1)%3][(dim+1)%3]*box_vectors[(dim+2)%3][(dim+2)%3]-box_vectors[(dim+1)%3][(dim+2)%3]*box_vectors[(dim+2)%3][(dim+1)%3])+d_operator[ j[(dim+1)%3]+fft.plan[3].start[(dim+1)%3] ]*(box_vectors[(dim+2)%3][(dim+1)%3]*box_vectors[dim][(dim+2)%3]-box_vectors[(dim+2)%3][(dim+2)%3]*box_vectors[dim][(dim+1)%3])+d_operator[ j[(dim+2)%3]+fft.plan[3].start[(dim+2)%3] ]*(box_vectors[dim][(dim+1)%3]*box_vectors[(dim+1)%3][(dim+2)%3]-box_vectors[dim][(dim+2)%3]*box_vectors[(dim+1)%3][(dim+1)%3]))
+                                /volume;
+                     out[ind+1] =//k correct
+                                     2.0*M_PI*in[ind] * (d_operator[ j[dim]+fft.plan[3].start[dim] ]*(box_vectors[(dim+1)%3][(dim+1)%3]*box_vectors[(dim+2)%3][(dim+2)%3]-box_vectors[(dim+1)%3][(dim+2)%3]*box_vectors[(dim+2)%3][(dim+1)%3])+d_operator[ j[(dim+1)%3]+fft.plan[3].start[(dim+1)%3] ]*(box_vectors[(dim+2)%3][(dim+1)%3]*box_vectors[dim][(dim+2)%3]-box_vectors[(dim+2)%3][(dim+2)%3]*box_vectors[dim][(dim+1)%3])+d_operator[ j[(dim+2)%3]+fft.plan[3].start[(dim+2)%3] ]*(box_vectors[dim][(dim+1)%3]*box_vectors[(dim+1)%3][(dim+2)%3]-box_vectors[dim][(dim+2)%3]*box_vectors[(dim+1)%3][(dim+1)%3]))
+                                / volume;
+                    }
+                    ind += 2;
             }
         }
     }
@@ -1539,7 +1674,7 @@ p3m_float Solver::computeTotalEnergy() {
 
     MPI_Reduce(&local_k_space_energy, &k_space_energy, 1, P3M_MPI_FLOAT,
             MPI_SUM, 0, comm.mpicomm);
-    p3m_float prefactor = 1.0 / (2.0 * box_l[0] * box_l[1] * box_l[2]);
+    p3m_float prefactor = 1.0 / (2.0 * volume);
     k_space_energy *= prefactor;
 
 #ifdef P3M_INTERLACE
@@ -1564,7 +1699,7 @@ Solver::assignPotentials(p3m_float *data,
         p3m_int shifted, p3m_float* potentials) {
     const p3m_int q2off = local_grid.q_2_off;
     const p3m_int q21off = local_grid.q_21_off;
-    const p3m_float prefactor = 1.0 / (box_l[0] * box_l[1] * box_l[2]);
+    const p3m_float V_inverse = 1.0 / (box_l[0] * box_l[1] * box_l[2]);
 
     P3M_DEBUG(printf( "  P3M::Solver::assign_potentials() started...\n"));
     /* Loop over all particles */
@@ -1586,7 +1721,7 @@ Solver::assignPotentials(p3m_float *data,
             linind_grid += q21off;
         }
 
-        potential *= prefactor;
+        potential *= V_inverse;
         /* self energy correction */
         potential -= charges[pid] * M_2_SQRTPI * alpha;
         /* net charge correction */
@@ -1701,6 +1836,28 @@ Solver::assignFieldsAD(p3m_float *data,
     P3M_DEBUG(printf( "  assign_fields_ad() finished.\n"));
 }
 
+void
+Solver::cartesianizeFields(p3m_float *fields, p3m_int num_particles){
+    p3m_int part_no;   
+    
+    for (part_no = 0; part_no < num_particles; part_no++) {
+        fields[3 * part_no + 2] = 
+            (box_vectors[1][0] * box_vectors[2][1] - box_vectors[1][1] * box_vectors[2][0]) 
+            / (box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]) 
+            * fields[3 * part_no]
+            -(box_vectors[2][1]) / (box_vectors[1][1] * box_vectors[2][2]) 
+            * fields[3 * part_no + 1]
+            + 1 / box_vectors[2][2] * fields[3 * part_no + 2];
+   //todo: -boxbx oder boxby?     
+        fields[3 * part_no + 1] =
+            -(box_vectors[1][0]) / (box_vectors[0][0] * box_vectors[1][1])
+            * fields[3 * part_no]
+            + 1 / box_vectors[1][1] * fields[3 * part_no + 1];
+        
+        fields[3 * part_no] = 1 / (box_vectors[0][0]) * fields[3 * part_no];
+    }
+}
+
 
 /***************************************************/
 /******************** TUNING ***********************/
@@ -1731,8 +1888,6 @@ static const p3m_int num_steps_good_gridsize = 14;
 
 void
 Solver::tune(p3m_int num_particles, p3m_float *positions, p3m_float *charges) {
-    /* Prepare the communicator before tuning */
-    comm.prepare(box_l);
 
     /* Count the charges */
     p3m_float sum_q2_before = sum_q2;
@@ -1882,10 +2037,10 @@ Solver::tuneFar(p3m_int num_particles, p3m_float *positions, p3m_float *charges,
             throw std::domain_error("r_cut is too small!");
 
         /* check whether cutoff is larger than half a box length */
-        if ((_r_cut > 0.5*box_l[0]) ||
-                (_r_cut > 0.5*box_l[1]) ||
-                (_r_cut > 0.5*box_l[2]))
-            throw std::domain_error("r_cut is larger than half a system box length.");
+//        if ((_r_cut > 0.5*box_l[0]) ||
+//                (_r_cut > 0.5*box_l[1]) ||
+//                (_r_cut > 0.5*box_l[2]))
+//            throw std::domain_error("r_cut is larger than half a system box length.");
 
         /* check whether cutoff is larger than domain size */
 
@@ -2006,7 +2161,7 @@ Solver::tuneGrid(TuneParametersList &params_to_try) {
                 (*p)->p.grid[0] = (*p)->p.grid[1] = (*p)->p.grid[2] = grid1d;
                 P3M_DEBUG(printf("      rough grid=" FINT "\n", grid1d));
                 this->tuneBroadcastCommand(CMD_COMPUTE_ERROR_ESTIMATE);
-                errorEstimate->compute_master((*p)->p, sum_qpart, sum_q2, box_l, (*p)->error, (*p)->rs_error, (*p)->ks_error);
+                errorEstimate->compute_master((*p)->p, sum_qpart, sum_q2, box_l, (*p)->error, (*p)->rs_error, (*p)->ks_error, box_vectors, isTriclinic);
                 P3M_DEBUG(printf("        => error=" FFLOATE "\n", (*p)->error));
             } while ((*p)->error > tolerance_field);
 
@@ -2030,7 +2185,7 @@ Solver::tuneGrid(TuneParametersList &params_to_try) {
                 (*p)->p.grid[0] = (*p)->p.grid[1] = (*p)->p.grid[2] = grid1d;
                 P3M_DEBUG(printf("      fine grid=" FINT "\n", grid1d));
                 this->tuneBroadcastCommand(CMD_COMPUTE_ERROR_ESTIMATE);
-                errorEstimate->compute_master((*p)->p, sum_qpart, sum_q2, box_l, (*p)->error, (*p)->rs_error, (*p)->ks_error);
+                errorEstimate->compute_master((*p)->p, sum_qpart, sum_q2, box_l, (*p)->error, (*p)->rs_error, (*p)->ks_error, box_vectors, isTriclinic);
                 P3M_DEBUG(printf("          => error=" FFLOATE "\n", (*p)->error));
                 if ((*p)->error < tolerance_field) {
                     // parameters achieve error
@@ -2094,7 +2249,7 @@ Solver::tuneGrid(TuneParametersList &params_to_try) {
                     (*p)->p.grid[0], (*p)->p.grid[1], (*p)->p.grid[2]));
             this->tuneBroadcastCommand(CMD_COMPUTE_ERROR_ESTIMATE);
             errorEstimate->compute_master((*p)->p, sum_qpart, sum_q2, box_l,
-                    (*p)->error, (*p)->rs_error, (*p)->ks_error);
+                    (*p)->error, (*p)->rs_error, (*p)->ks_error,box_vectors,isTriclinic);
 
             if ((*p)->error < tolerance_field) {
                 // error is small enough for this parameter set, so keep it
